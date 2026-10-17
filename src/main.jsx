@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { api, native, serviceBase, setServiceBase } from './api'
+import { api, canAccountLogin, accountLogin as loginWithAccount } from './api'
 import { demoLibrary } from './demo'
 import { usePlayer } from './usePlayer'
 import { MusicCanvas } from './MusicCanvas'
@@ -13,7 +13,7 @@ function App() {
   const [view, setView] = useState('welcome'), [selection, setSelection] = useState(() => saved('conova.selection', { collectionId: null, trackId: null }))
   const [mode, setMode] = useState(() => saved('conova.mode', 'sequence')), [sources, setSources] = useState({ owned: [], followed: [] }), [sourceTab, setSourceTab] = useState('owned')
   const [sourceLoading, setSourceLoading] = useState(false), [busy, setBusy] = useState(''), [message, setMessage] = useState('')
-  const [qr, setQr] = useState(null), [qrStatus, setQrStatus] = useState('waiting'), [service, setService] = useState(serviceBase())
+  const [qr, setQr] = useState(null), [qrStatus, setQrStatus] = useState('waiting')
   const [autoSync, setAutoSync] = useState(() => saved('conova.autosync', true)), [sceneSize, setSceneSize] = useState({ width: 1400, height: 590 })
   const scene = useRef(null), gesture = useRef(null), holdTimer = useRef(null), suppressClick = useRef(false), rowPositions = useRef({}), history = useRef([]), syncLock = useRef(false), alive = useRef(true), state = useRef({})
   const collectionIndex = Math.max(0, library.findIndex((item) => item.id === selection.collectionId)), collection = library[collectionIndex]
@@ -33,7 +33,7 @@ function App() {
       const session = await api('/session')
       if (!alive.current) return
       setUser(session.user); setLibrary(session.library); setView(session.library.length ? null : session.user ? 'manage' : 'welcome')
-    } catch (error) { if (alive.current) { setMessage(error.message); setView(native ? 'service' : 'welcome') } }
+    } catch (error) { if (alive.current) { setMessage(error.message); setView('welcome') } }
     finally { if (alive.current) setReady(true) }
   }, [])
   useEffect(() => { alive.current = true; bootstrap(); return () => { alive.current = false; clearTimeout(holdTimer.current) } }, [bootstrap])
@@ -164,10 +164,10 @@ function App() {
     return () => { cancelled = true; clearTimeout(timer) }
   }, [qr, view, qrExpired, player.stop])
   const accountLogin = async () => {
-    if (!window.conova?.login) return generateQr()
+    if (!canAccountLogin) return generateQr()
     setView('login'); setMessage(''); setBusy('account')
     try {
-      const result = await window.conova.login()
+      const result = await loginWithAccount()
       if (result.cancelled) { setMessage('登录已取消，可继续扫码登录。'); return }
       await bootstrap(); setDemo(false); player.stop(); setView('manage')
     } catch (error) { setMessage(error.message) }
@@ -240,7 +240,7 @@ function App() {
       for (let column = Math.max(0, center - 5); column < Math.min(item.tracks.length, center + 6); column++) tiles.push({ key: `${item.id}:${item.tracks[column].id}`, track: item.tracks[column], x: column - center, y, row, column, active: row === collectionIndex && column === trackIndex })
     }
   } else { for (let y = -2; y <= 2; y++) for (let x = -5; x <= 5; x++) tiles.push({ key: `placeholder:${x}:${y}`, x, y, placeholder: true }) }
-  const vm = { view, openView, setView, library, collection, collectionIndex, track, user, demo, ready, busy, message, setMessage, mode, setMode, qr, qrStatus, generateQr, accountLogin, startDemo, logout, sources, sourceTab, setSourceTab, sourceLoading, loadSources, toggleSource, autoSync, setAutoSync, sync, select, player, rowPositions, advance, service, setService, connectService: async () => { try { setServiceBase(service); setBusy('service'); await bootstrap() } catch (error) { setMessage(error.message) } finally { setBusy('') } }, bootstrap }
+  const vm = { view, openView, setView, library, collection, collectionIndex, track, user, demo, ready, busy, message, setMessage, mode, setMode, qr, qrStatus, generateQr, accountLogin, startDemo, logout, sources, sourceTab, setSourceTab, sourceLoading, loadSources, toggleSource, autoSync, setAutoSync, sync, select, player, rowPositions, advance, bootstrap }
 
   return <MusicCanvas {...{ player, view, mode, tiles, tileSize, step, sceneSize, scattered, scene, vm, beginGesture, moveGesture, endGesture, suppressClick, holdTimer, gesture, select, track, openView }} />
 }

@@ -33,11 +33,9 @@ Windows PowerShell 可用以下命令把 Base64 字符串复制到剪贴板，�
 
 配置完成后另行安全备份原始密钥文件、别名和密码。GitHub Secrets 不能读取原值，不能代替密钥备份；后续发布直接复用已有四项 Secret。
 
-## 可选：预设 Android 服务地址
+## Android 独立运行
 
-在同一设置页的 **Variables** 中添加 `CONOVA_API_BASE`，值为你的 HTTPS Node.js 服务源地址，例如 `https://music.example.com`。
-
-不配置时，用户首次打开 APK 后可在连接设置中输入地址。Windows 安装包内置 Node.js 服务，无需此变量。不要将 Bilibili Cookie 放入变量或构建参数。
+APK 内置完整的 B 站访问、本机专辑存储和音频播放逻辑，无需 Conova 服务器或 `CONOVA_API_BASE` 变量。不要把 Bilibili Cookie 放入仓库、变量或构建参数。
 
 ## 触发发布
 
@@ -60,3 +58,7 @@ Windows PowerShell 可用以下命令把 Base64 字符串复制到剪贴板，�
 构建失败时不会创建公开 Release，已完成的安装包可在该次运行的 Artifacts 中下载，保存 14 天。若上传阶段失败留下草稿或标签，重试前需要删除未完成的草稿及其标签，或改用新版本号。
 
 APK 使用上述正式密钥签名。Windows EXE 当前未配置代码签名证书。
+
+## 重打包已有版本的 Android APK
+
+只有明确需要修复已有版本时，运行 **Rebuild Android APK**，输入已有版本号。它使用所选提交构建同版本、同签名 APK，运行 Android 模拟器验证后，仅替换该 Release 的 APK 并更新 SHA256SUMS.txt。Windows EXE 和原有 Git 标签保持不变，修复提交记入 Release 说明。被替换的 APK 和校验文件在该次 Actions 的 `previous-android-release` Artifact 中保留 30 天。

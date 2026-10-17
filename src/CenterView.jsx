@@ -1,4 +1,4 @@
-import { native } from './api'
+import { canAccountLogin } from './api'
 
 export const MODES = [{ id: 'sequence', title: '顺序播放' }, { id: 'shuffle', title: '随机播放' }, { id: 'single', title: '单曲循环' }]
 
@@ -7,7 +7,7 @@ export function CenterView({ vm: v }) {
   return <section className={`center-view view-${v.view}`} key={v.view} aria-label="设置" onPointerDown={(event) => event.stopPropagation()}>
     {v.view === 'welcome' && <div className="text-menu">
       <button className="text-option" onClick={v.generateQr} disabled={!v.ready || !!v.busy}>扫码登录</button>
-      {window.conova && <button className="text-option" onClick={v.accountLogin} disabled={!!v.busy}>账号登录</button>}
+      {canAccountLogin && <button className="text-option" onClick={v.accountLogin} disabled={!!v.busy}>账号登录</button>}
     </div>}
 
     {v.view === 'login' && <>
@@ -18,7 +18,7 @@ export function CenterView({ vm: v }) {
       <p className="qr-state">{v.busy === 'account' ? '等待账号登录' : v.qrStatus === 'scanned' ? '请在手机上确认' : v.qrStatus === 'expired' ? '二维码已过期' : '等待扫码'}</p>
       <div className="text-menu compact-menu">
         <button className="text-option" onClick={v.generateQr} disabled={!!v.busy}>刷新二维码</button>
-        {window.conova && <button className="text-option" onClick={v.accountLogin} disabled={!!v.busy}>账号登录</button>}
+        {canAccountLogin && <button className="text-option" onClick={v.accountLogin} disabled={!!v.busy}>账号登录</button>}
         {back(v.library.length ? 'settings' : 'welcome')}
       </div>
     </>}
@@ -35,12 +35,11 @@ export function CenterView({ vm: v }) {
       <button className="text-option setting-line" aria-pressed={v.autoSync} onClick={() => v.setAutoSync((value) => !value)}>自动同步<span className={`selection-mark ${v.autoSync ? 'checked' : ''}`} /></button>
       <button className="text-option" onClick={() => v.sync(false)} disabled={!!v.busy || v.demo}>{v.busy === 'sync' ? '正在刷新' : '刷新专辑'}</button>
       <button className="text-option" onClick={() => v.openView('account')}>账号</button>
-      {native && <button className="text-option" onClick={() => v.openView('service')}>连接设置</button>}
       {back('controls')}
     </div>}
 
     {v.view === 'manage' && <>
-      {!v.user || v.demo ? <div className="text-menu"><button className="text-option" onClick={v.generateQr}>扫码登录</button>{window.conova && <button className="text-option" onClick={v.accountLogin}>账号登录</button>}</div> : <>
+      {!v.user || v.demo ? <div className="text-menu"><button className="text-option" onClick={v.generateQr}>扫码登录</button>{canAccountLogin && <button className="text-option" onClick={v.accountLogin}>账号登录</button>}</div> : <>
         <div className="source-tabs"><button className={`text-option ${v.sourceTab === 'owned' ? 'selected' : ''}`} onClick={() => v.setSourceTab('owned')}>我的收藏夹</button><button className={`text-option ${v.sourceTab === 'followed' ? 'selected' : ''}`} onClick={() => v.setSourceTab('followed')}>我追的合集/收藏夹</button></div>
         <div className="source-list scroll-area">
           {v.sourceLoading ? <span className="status-text">正在读取</span> : v.sources[v.sourceTab].length ? v.sources[v.sourceTab].map((source) => {
@@ -56,19 +55,10 @@ export function CenterView({ vm: v }) {
     {v.view === 'account' && <div className="text-menu">
       {v.user && <span className="account-name">{v.user.name}</span>}
       {!v.user && <button className="text-option" onClick={v.generateQr}>扫码登录</button>}
-      {window.conova && !v.user && <button className="text-option" onClick={v.accountLogin} disabled={!!v.busy}>账号登录</button>}
+      {canAccountLogin && !v.user && <button className="text-option" onClick={v.accountLogin} disabled={!!v.busy}>账号登录</button>}
       {(v.user || v.demo) && <button className="text-option" onClick={v.logout} disabled={!!v.busy}>{v.demo ? '退出体验' : '退出登录'}</button>}
       {back('settings')}
     </div>}
-
-    {v.view === 'service' && <>
-      <form className="service-form" onSubmit={(event) => { event.preventDefault(); v.connectService() }}>
-        <label htmlFor="service-url">服务地址</label>
-        <input id="service-url" type="url" value={v.service} onChange={(event) => v.setService(event.target.value)} placeholder="https://" required />
-        <button className="text-option" disabled={!!v.busy}>连接</button>
-      </form>
-      {v.library.length > 0 && back('settings')}
-    </>}
 
     {v.view === 'error' && <>
       <p className="inline-message" role="status">{v.message}</p>

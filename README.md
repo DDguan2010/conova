@@ -41,16 +41,16 @@ npm run android:sync
 npm run android:open
 ```
 
-Android 使用 Capacitor WebView，通过 HTTPS 连接你部署的 Node.js 服务。首次启动时在“服务地址”输入该服务的源地址，也可以在构建前通过 `.env.local` 中的 `VITE_API_BASE` 设置。Windows 自带的本地服务不需要这项配置。
+Android 是可独立使用的完整客户端，无需部署服务或填写服务地址。它与 Windows 复用 B 站接口逻辑，通过 Android 原生 HTTPS 网络访问 B 站，支持扫码和官方页面账号登录、收藏夹与合集同步、音频播放和拖动进度。登录凭据和已选专辑由 Android Keystore 加密保存在本机；退出登录会清理凭据和播放授权。
 
-独立部署服务：
+浏览器版也可独立部署 Node.js 服务：
 
 ```powershell
 npm run build
 npm start
 ```
 
-默认监听 `127.0.0.1:3210`，在 HTTPS 反向代理后提供访问。环境变量见 `.env.example`。构建 APK 需要 Android Studio、Android SDK 和 JDK；当前环境已生成并同步 Android 工程，尚未构建或进行真机验证。
+浏览器服务默认监听 `127.0.0.1:3210`。构建 APK 需要 Android SDK 和 JDK 21，也可以直接使用 GitHub Actions。Android 仪器测试覆盖独立启动、原生桥接、本机加密存储、音频 Range 和 WebView 播放/拖动。
 
 ## 收藏夹与同步
 

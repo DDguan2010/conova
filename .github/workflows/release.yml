@@ -143,8 +143,6 @@ jobs:
         run: npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
 
       - name: Build web app and sync Capacitor
-        env:
-          VITE_API_BASE: ${{ vars.CONOVA_API_BASE }}
         run: npm run android:sync
 
       - name: Build signed release APK
@@ -154,7 +152,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          bash ./gradlew --no-daemon :app:assembleRelease \
+          bash ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease \
             -PconovaVersion="$RELEASE_VERSION" \
             -PconovaVersionCode="$ANDROID_VERSION_CODE"
 

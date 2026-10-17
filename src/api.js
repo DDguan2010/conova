@@ -1,41 +1,25 @@
-import { Capacitor, CapacitorHttp } from '@capacitor/core'
-import { Preferences } from '@capacitor/preferences'
+import { Capacitor } from '@capacitor/core'
+import { isImageHost } from '../server/bilibili.js'
 
-export const native = Capacitor.isNativePlatform()
-let nativeToken = ''
-let base = (localStorage.getItem('conova.service') || import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
-if (native) nativeToken = (await Preferences.get({ key: 'conova.session' })).value || ''
-export const serviceBase = () => base
-export function setServiceBase(value) {
-  const url = new URL(value)
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '10.0.2.2'].includes(url.hostname))) throw new Error('请输入 HTTPS 服务地址。')
-  if (url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('服务地址只需包含域名和端口。')
-  base = url.origin
-  localStorage.setItem('conova.service', base)
-  nativeToken = ''
-  if (native) Preferences.remove({ key: 'conova.session' })
-}
-export function mediaUrl(path) { return path?.startsWith('/api/') ? `${base}${path}` : path }
+export const native = Capacitor.getPlatform() === 'android'
+export const canAccountLogin = native || Boolean(window.conova?.login)
+const base = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
+const local = native ? import('./android-service') : null
+export async function accountLogin() { return native ? (await local).androidLogin() : window.conova.login() }
+export function mediaUrl(path) { return !native && path?.startsWith('/api/') ? `${base}${path}` : path }
 export function coverUrl(url) {
   if (!url || url.startsWith('/') || url.startsWith('data:')) return url
-  return `${base}/api/image?url=${encodeURIComponent(url.replace(/^http:/, 'https:'))}`
+  const image = url.replace(/^http:/, 'https:')
+  if (native) return isImageHost(image) ? `/__conova/image?url=${encodeURIComponent(image)}` : ''
+  return `${base}/api/image?url=${encodeURIComponent(image)}`
 }
 export async function api(path, { method = 'GET', body, signal } = {}) {
-  if (native && !base) throw new Error('请先设置你的 Conova 服务地址。')
-  const headers = { 'Content-Type': 'application/json', ...(native ? { 'X-Conova-Client': 'native', ...(nativeToken ? { Authorization: `Bearer ${nativeToken}` } : {}) } : {}) }
-  let data, status
-  if (native) {
-    const result = await CapacitorHttp.request({ url: `${base}/api${path}`, method, headers, data: body, connectTimeout: 20000, readTimeout: 180000, responseType: 'json' })
-    data = typeof result.data === 'string' ? JSON.parse(result.data) : result.data
-    status = result.status
-  } else {
-    let result
-    try { result = await fetch(`${base}/api${path}`, { method, credentials: 'include', headers, body: body === undefined ? undefined : JSON.stringify(body), signal }) }
-    catch (error) { if (error.name === 'AbortError') throw error; throw new Error('无法连接 Conova 服务，请检查网络后重试。') }
-    status = result.status
-    try { data = await result.json() } catch { throw new Error('Conova 服务没有响应，请检查服务地址。') }
-  }
-  if (status < 200 || status >= 300) { const error = new Error(data.error || '操作未完成，请重试。'); error.status = status; throw error }
-  if (data.token && native) { nativeToken = data.token; await Preferences.set({ key: 'conova.session', value: data.token }) }
+  if (native) return (await local).androidApi(path, { method, body, signal })
+  let result
+  try { result = await fetch(`${base}/api${path}`, { method, credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal }) }
+  catch (error) { if (error.name === 'AbortError') throw error; throw new Error('无法连接 Conova 服务，请检查网络后重试。') }
+  let data
+  try { data = await result.json() } catch { throw new Error('Conova 服务没有响应，请稍后重试。') }
+  if (!result.ok) { const error = new Error(data.error || '操作未完成，请重试。'); error.status = result.status; throw error }
   return data
 }
