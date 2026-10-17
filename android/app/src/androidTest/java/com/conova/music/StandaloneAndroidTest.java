@@ -205,13 +205,14 @@ public class StandaloneAndroidTest {
             view.getLocationOnScreen(origin);
             center.set(new float[]{origin[0] + view.getWidth() / 2f, origin[1] + view.getHeight() / 2f});
         });
-        long start = SystemClock.uptimeMillis();
+        // Queue both trusted events together. Sleeping between injection calls
+        // can turn a short tap into a long press when the emulator is busy.
+        long start = SystemClock.uptimeMillis() - 60;
         float[] point = center.get();
         MotionEvent down = MotionEvent.obtain(start, start, MotionEvent.ACTION_DOWN, point[0], point[1], 0);
         down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
         assertTrue(InstrumentationRegistry.getInstrumentation().getUiAutomation().injectInputEvent(down, false));
-        SystemClock.sleep(60);
-        MotionEvent up = MotionEvent.obtain(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, point[0], point[1], 0);
+        MotionEvent up = MotionEvent.obtain(start, start + 60, MotionEvent.ACTION_UP, point[0], point[1], 0);
         up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
         assertTrue(InstrumentationRegistry.getInstrumentation().getUiAutomation().injectInputEvent(up, false));
         down.recycle(); up.recycle();
