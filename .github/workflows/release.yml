@@ -193,8 +193,11 @@ jobs:
           node-version: '24'
           cache: npm
 
-      - name: Install dependencies and Electron
+      - name: Install dependencies
         run: npm ci
+
+      - name: Download Electron runtime
+        run: node node_modules/electron/install.js
 
       - name: Set package version
         run: npm version "$env:RELEASE_VERSION" --no-git-tag-version --allow-same-version
