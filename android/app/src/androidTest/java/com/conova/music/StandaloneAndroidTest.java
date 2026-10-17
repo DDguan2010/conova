@@ -1,11 +1,11 @@
 package com.conova.music;
 
 import static org.junit.Assert.*;
-import static androidx.test.espresso.Espresso.onView;
-import static androidx.test.espresso.action.ViewActions.click;
-import static androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom;
 import android.content.Context;
 import android.net.Uri;
+import android.os.SystemClock;
+import android.view.InputDevice;
+import android.view.MotionEvent;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import androidx.test.core.app.ActivityScenario;
@@ -107,11 +107,12 @@ public class StandaloneAndroidTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> activity.getBridge().getWebView().loadUrl("https://localhost/?demo=1"));
             waitFor(scenario, "!!document.querySelector('[data-testid=current-cover]')");
-            onView(isAssignableFrom(android.webkit.WebView.class)).perform(click());
+            evaluate(scenario, "window.__touches=[];['pointerdown','pointerup','click','contextmenu'].forEach(type=>document.addEventListener(type,e=>window.__touches.push({type,time:e.timeStamp,trusted:e.isTrusted}),true));true");
+            tapCover(scenario);
             waitFor(scenario, "document.querySelector('main').classList.contains('playing') && Number(document.querySelector('[aria-label=播放进度]').value)>0");
             evaluate(scenario, "(()=>{const i=document.querySelector('[aria-label=播放进度]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'12');i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
             waitFor(scenario, "Number(document.querySelector('[aria-label=播放进度]').value)>=12");
-            onView(isAssignableFrom(android.webkit.WebView.class)).perform(click());
+            tapCover(scenario);
             waitFor(scenario, "document.querySelector('main').classList.contains('paused')");
             assertEquals("false", evaluate(scenario, "document.body.innerText.includes('服务地址')"));
         }
@@ -136,12 +137,32 @@ public class StandaloneAndroidTest {
         return result.get();
     }
 
+    private void tapCover(ActivityScenario<MainActivity> scenario) throws Exception {
+        AtomicReference<float[]> center = new AtomicReference<>();
+        scenario.onActivity(activity -> {
+            android.webkit.WebView view = activity.getBridge().getWebView();
+            int[] origin = new int[2];
+            view.getLocationOnScreen(origin);
+            center.set(new float[]{origin[0] + view.getWidth() / 2f, origin[1] + view.getHeight() / 2f});
+        });
+        long start = SystemClock.uptimeMillis();
+        float[] point = center.get();
+        MotionEvent down = MotionEvent.obtain(start, start, MotionEvent.ACTION_DOWN, point[0], point[1], 0);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        assertTrue(InstrumentationRegistry.getInstrumentation().getUiAutomation().injectInputEvent(down, false));
+        SystemClock.sleep(60);
+        MotionEvent up = MotionEvent.obtain(start, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, point[0], point[1], 0);
+        up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        assertTrue(InstrumentationRegistry.getInstrumentation().getUiAutomation().injectInputEvent(up, false));
+        down.recycle(); up.recycle();
+    }
+
     private void waitFor(ActivityScenario<MainActivity> scenario, String expression) throws Exception {
         long deadline = System.currentTimeMillis() + 25000;
         while (System.currentTimeMillis() < deadline) {
             if ("true".equals(evaluate(scenario, "(()=>{try{return Boolean(" + expression + ")}catch(e){return false}})()"))) return;
             Thread.sleep(200);
         }
-        fail("Android WebView condition not met: " + expression + "; body=" + evaluate(scenario, "document.body.innerText"));
+        fail("Android WebView condition not met: " + expression + "; body=" + evaluate(scenario, "document.body.innerText") + "; touches=" + evaluate(scenario, "JSON.stringify(window.__touches)"));
     }
 }
