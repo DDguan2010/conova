@@ -102,16 +102,13 @@ input.cover-progress { position: absolute; bottom: 1px; left: 9px; width: calc(1
 .qr-state { font-size: 18px; margin: 22px 0 10px; line-height: 1.6; }
 .compact-menu .text-option { font-size: 20px; }
 .loading-square { width: 8px; height: 8px; background: #555; animation: blink 1s ease infinite; }
-.service-form { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
-.service-form label { font-size: 23px; }
-.service-form input { width: 100%; border: 0; border-bottom: 1px solid #777; padding: 8px 0; background: #000; color: #fff; border-radius: 0; font-size: 19px; }
 .inline-message { font-size: 18px; line-height: 1.8; margin: 24px 0; overflow-wrap: anywhere; }
 
 @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
 @keyframes blink { 50% { opacity: .25; } }
 @media(max-width:650px) {
   .center-view { width: calc(100% - 112px); max-height: calc(100% - 140px); padding: 6px 0; }
-  .text-option, .setting-line, .service-form label, .account-name { font-size: 19px; }
+  .text-option, .setting-line, .account-name { font-size: 19px; }
   .source-tabs { flex-direction: column; align-items: flex-start; gap: 2px; margin-bottom: 20px; }
   .source-tabs .text-option { font-size: 18px; }
   .mode-options { margin-bottom: 22px; }

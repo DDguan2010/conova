@@ -1,6 +1,9 @@
 package com.conova.music;
 
 import static org.junit.Assert.*;
+import static androidx.test.espresso.Espresso.onView;
+import static androidx.test.espresso.action.ViewActions.click;
+import static androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom;
 import android.content.Context;
 import android.net.Uri;
 import android.webkit.WebResourceRequest;
@@ -89,15 +92,26 @@ public class StandaloneAndroidTest {
         }
     }
 
+    @Test public void bilibiliQrEndpointWorksThroughAndroidNativeHttps() throws Exception {
+        HttpURLConnection connection = NativeNetwork.open("https://passport.bilibili.com/x/passport-login/web/qrcode/generate?source=main-fe-header", "api", "", null, false);
+        try {
+            assertEquals(200, connection.getResponseCode());
+            org.json.JSONObject response = new org.json.JSONObject(NativeNetwork.read(connection.getInputStream()));
+            assertEquals(0, response.getInt("code"));
+            assertTrue(response.getJSONObject("data").getString("url").startsWith("https://"));
+            assertFalse(response.getJSONObject("data").getString("qrcode_key").isEmpty());
+        } finally { connection.disconnect(); }
+    }
+
     @Test public void packagedAudioPlaysAndSeeksInAndroidWebView() throws Exception {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> activity.getBridge().getWebView().loadUrl("https://localhost/?demo=1"));
             waitFor(scenario, "!!document.querySelector('[data-testid=current-cover]')");
-            evaluate(scenario, "document.querySelector('[data-testid=current-cover]').click();true");
+            onView(isAssignableFrom(android.webkit.WebView.class)).perform(click());
             waitFor(scenario, "document.querySelector('main').classList.contains('playing') && Number(document.querySelector('[aria-label=播放进度]').value)>0");
             evaluate(scenario, "(()=>{const i=document.querySelector('[aria-label=播放进度]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'12');i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
             waitFor(scenario, "Number(document.querySelector('[aria-label=播放进度]').value)>=12");
-            evaluate(scenario, "document.querySelector('[data-testid=current-cover]').click();true");
+            onView(isAssignableFrom(android.webkit.WebView.class)).perform(click());
             waitFor(scenario, "document.querySelector('main').classList.contains('paused')");
             assertEquals("false", evaluate(scenario, "document.body.innerText.includes('服务地址')"));
         }
