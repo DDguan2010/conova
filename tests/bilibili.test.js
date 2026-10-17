@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Bilibili, signWbi, isMediaHost, isImageHost } from '../server/bilibili.js'
+import { Bilibili, signWbi, isMediaUrl, isImageHost } from '../server/bilibili.js'
 
 const json = (data, code = 0) => new Response(JSON.stringify({ code, data }), { headers: { 'Content-Type': 'application/json' } })
 const media = (index) => ({ bvid: `BV${String(index).padStart(10, '0')}`, title: `Song ${index}`, upper: { name: 'Creator' }, duration: 180, cover: 'http://i0.hdslb.com/test.jpg' })
@@ -58,7 +58,42 @@ test('WBI signatures encode values, are independent of input key order and do no
   assert.match(result, /^bar=2&foo=hi%20there&wts=1702204169&w_rid=[a-f0-9]{32}$/)
   assert.equal(result, signWbi({ bar: 2, foo: first.foo }, 'a'.repeat(32), 'b'.repeat(32), 1702204169)); assert.equal(first.wts, undefined)
 })
-test('media proxy rejects private hosts, credential URLs and deceptive host suffixes', () => {
-  for (const url of ['http://a.bilivideo.com/a', 'https://bilivideo.com.evil.com/a', 'https://127.0.0.1/a', 'https://user:pass@a.bilivideo.com/a', 'https://a.bilivideo.com:8443/a']) assert.equal(isMediaHost(url), false)
-  assert.equal(isMediaHost('https://xy.mcdn.bilivideo.cn/audio.m4s'), true); assert.equal(isImageHost('https://i0.hdslb.com/a.jpg'), true); assert.equal(isImageHost('https://hdslb.com.evil.com/a'), false)
+test('playurl media accepts HTTP, partner CDNs and media ports without a domain allowlist', () => {
+  for (const url of ['https://xy.mcdn.bilivideo.cn:8082/audio.m4s', 'https://edge.mountaintoys.cn:4483/audio', 'http://cdn.example.org:8080/audio', 'https://another-cdn.example/audio']) assert.equal(isMediaUrl(url), true, url)
+  for (const url of ['file:///tmp/a', 'data:audio/mp4;base64,AA==', 'ftp://cdn.example/a', 'https://user:pass@cdn.example/a', 'not a URL']) assert.equal(isMediaUrl(url), false, url)
+  assert.equal(isImageHost('https://i0.hdslb.com/a.jpg'), true); assert.equal(isImageHost('https://hdslb.com.evil.com/a'), false)
+})
+
+function audioClient(streams) {
+  return new Bilibili({}, async (url) => {
+    if (url.pathname.endsWith('/view')) return json({ cid: 1, duration: 7200, title: 'Long recording' })
+    if (url.pathname.endsWith('/nav')) return json({ wbi_img: { img_url: `https://i0.hdslb.com/${'a'.repeat(32)}.png`, sub_url: `https://i0.hdslb.com/${'b'.repeat(32)}.png` } })
+    assert.equal(url.pathname, '/x/player/wbi/playurl')
+    return json({ dash: { audio: streams } })
+  })
+}
+
+test('audio resolution prefers standard HTTPS and retains MCDN and partner backups of the same quality', async () => {
+  const pcdn = 'https://xy116x196x147x153xy.mcdn.bilivideo.cn:8082/music.m4s?deadline=123&sign=a%2Fb'
+  const partner = 'https://edge.mountaintoys.cn:4483/music.m4s'
+  const cdn = 'https://upos-sz-mirrorcoso1.bilivideo.com/music.m4s'
+  const client = audioClient([{ bandwidth: 320000, baseUrl: pcdn, backupUrl: [partner, cdn, cdn] }, { bandwidth: 64000, baseUrl: 'https://low.example/audio' }])
+  const result = await client.audio('BV1234567890')
+  assert.equal(result.url, cdn)
+  assert.deepEqual(result.backups, [pcdn, partner])
+  assert.equal(result.duration, 7200)
+})
+
+test('snake-case media fields and HTTP playback signatures are preserved exactly', async () => {
+  const primary = 'http://partner.example:8080/music.m4s?sign=a%2Fb%2Bc&token=xyz'
+  const result = await audioClient([{ base_url: primary, backup_url: ['http://backup.example/audio'] }]).audio('BV1234567890')
+  assert.equal(result.url, primary)
+  assert.deepEqual(result.backups, ['http://backup.example/audio'])
+})
+
+test('a valid backup or lower quality can still play when the first address is malformed', async () => {
+  const result = await audioClient([{ bandwidth: 320000, baseUrl: 'file:///bad', backupUrl: ['https://partner.example/music'] }]).audio('BV1234567890')
+  assert.equal(result.url, 'https://partner.example/music')
+  assert.equal((await audioClient([{ bandwidth: 320000, baseUrl: 'data:bad' }, { bandwidth: 64000, baseUrl: 'https://lower.example/music' }]).audio('BV1234567890')).url, 'https://lower.example/music')
+  await assert.rejects(() => audioClient([{ baseUrl: 'file:///bad' }]).audio('BV1234567890'), /暂未返回可用/)
 })

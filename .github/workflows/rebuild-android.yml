@@ -191,5 +191,5 @@ jobs:
         run: |
           gh release view "$RELEASE_TAG" --json body --jq .body > notes.md
           sed -i '/<!-- conova-android-rebuild -->/,$d' notes.md
-          printf '\n<!-- conova-android-rebuild -->\nAndroid APK 已更新为独立客户端，无需服务地址。支持本机账号登录、专辑同步和音频播放。\n\nAndroid 修复提交：%s\n' "$RELEASE_COMMIT" >> notes.md
+          printf '\n<!-- conova-android-rebuild -->\nAndroid APK 可独立运行，无需服务地址。已修复第三方 CDN/媒体端口地址被拦截的问题，并优化长音频拖动、Range 分段读取和备用节点切换。\n\nAndroid 修复提交：%s\n' "$RELEASE_COMMIT" >> notes.md
           gh release edit "$RELEASE_TAG" --notes-file notes.md

@@ -3,6 +3,7 @@ import { api, coverUrl, mediaUrl } from './api'
 
 export function usePlayer({ onEnd, onError }) {
   const audio = useRef(null), graph = useRef(null), generation = useRef(0), current = useRef(null), desired = useRef(false)
+  const pendingSeek = useRef(null), request = useRef(null)
   const [playing, setPlaying] = useState(false), [loading, setLoading] = useState(false), [position, setPosition] = useState(0), [duration, setDuration] = useState(0)
   const [volume, setVolumeState] = useState(() => Number(localStorage.getItem('conova.volume') ?? 0.7))
   const callbacks = useRef({ onEnd, onError }); callbacks.current = { onEnd, onError }
@@ -10,13 +11,18 @@ export function usePlayer({ onEnd, onError }) {
     const element = new Audio()
     element.crossOrigin = 'anonymous'; element.preload = 'metadata'; element.volume = Math.max(0, Math.min(1, volume)); audio.current = element
     const events = {
-      timeupdate: () => setPosition(element.currentTime), durationchange: () => setDuration(Number.isFinite(element.duration) ? element.duration : 0),
+      timeupdate: () => { if (pendingSeek.current === null && !element.seeking) setPosition(element.currentTime) },
+      durationchange: () => { if (Number.isFinite(element.duration) && element.duration > 0) setDuration(element.duration) },
+      loadedmetadata: () => { if (pendingSeek.current !== null && Number.isFinite(element.duration)) element.currentTime = Math.min(pendingSeek.current, element.duration) },
+      seeking: () => setLoading(desired.current),
+      seeked: () => { pendingSeek.current = null; setPosition(element.currentTime); setLoading(desired.current && element.readyState < 3) },
+      waiting: () => setLoading(desired.current && !element.paused),
       playing: () => { setPlaying(true); setLoading(false) }, pause: () => setPlaying(false),
       ended: () => { desired.current = false; setPlaying(false); callbacks.current.onEnd?.() },
-      error: () => { setPlaying(false); setLoading(false); desired.current = false; current.current = null; callbacks.current.onError?.('这首音频暂时无法播放，请重试或切换下一首。') },
+      error: () => { if (!element.getAttribute('src')) return; setPlaying(false); setLoading(false); desired.current = false; current.current = null; pendingSeek.current = null; callbacks.current.onError?.('这首音频暂时无法播放，请重试或切换下一首。') },
     }
     for (const [name, listener] of Object.entries(events)) element.addEventListener(name, listener)
-    return () => { generation.current++; for (const [name, listener] of Object.entries(events)) element.removeEventListener(name, listener); element.pause(); element.removeAttribute('src'); element.load(); audio.current = null; graph.current?.context.close(); graph.current = null }
+    return () => { generation.current++; request.current?.abort(); for (const [name, listener] of Object.entries(events)) element.removeEventListener(name, listener); element.pause(); element.removeAttribute('src'); element.load(); audio.current = null; graph.current?.context.close(); graph.current = null }
   }, [])
   const ensureGraph = useCallback(async () => {
     if (!audio.current) return
@@ -30,12 +36,16 @@ export function usePlayer({ onEnd, onError }) {
     if (!audio.current || !track) return
     if (track.unavailable) { callbacks.current.onError?.('这个视频已失效，试试其他歌曲。'); return }
     const id = ++generation.current, element = audio.current
-    desired.current = autoplay; element.pause(); setPlaying(false); setPosition(0); setDuration(track.duration || 0); setLoading(autoplay); current.current = null
+    request.current?.abort()
+    const controller = new AbortController(); request.current = controller
+    pendingSeek.current = null
+    desired.current = autoplay; element.pause(); element.removeAttribute('src'); element.load(); setPlaying(false); setPosition(0); setDuration(track.duration || 0); setLoading(autoplay); current.current = null
     try {
       if (autoplay) await ensureGraph()
-      const result = track.demo ? { url: '/audio/ambient.wav', duration: 60 } : await api(`/track/${track.bvid}`)
+      const result = track.demo ? { url: '/audio/ambient.wav', duration: 60 } : await api(`/track/${track.bvid}`, { signal: controller.signal })
       if (generation.current !== id) return
       element.src = mediaUrl(result.url); current.current = track.id
+      if (result.duration > 0) setDuration(result.duration)
       if (desired.current) await element.play(); else setLoading(false)
       if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.artist, album: 'conova', artwork: track.cover ? [{ src: new URL(coverUrl(track.cover), location.href).href, sizes: '512x512', type: 'image/jpeg' }] : [] })
     } catch (error) {
@@ -53,11 +63,20 @@ export function usePlayer({ onEnd, onError }) {
     try { desired.current = true; await ensureGraph(); await element.play() } catch (error) { callbacks.current.onError?.(error.message) }
   }, [loading, load, ensureGraph])
   const stop = useCallback(() => {
-    generation.current++; desired.current = false; current.current = null; audio.current?.pause()
+    generation.current++; request.current?.abort(); pendingSeek.current = null; desired.current = false; current.current = null; audio.current?.pause()
     if (audio.current) { audio.current.removeAttribute('src'); audio.current.load() }
     setPosition(0); setDuration(0); setLoading(false); setPlaying(false)
   }, [])
-  const seek = useCallback((value) => { if (audio.current && Number.isFinite(audio.current.duration)) { audio.current.currentTime = Math.max(0, Math.min(value, audio.current.duration)); setPosition(audio.current.currentTime) } }, [])
+  const seek = useCallback((value) => {
+    const element = audio.current
+    if (!element || !Number.isFinite(value)) return
+    const total = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : duration
+    if (!total) return
+    const target = Math.max(0, Math.min(value, total))
+    pendingSeek.current = target
+    setPosition(target)
+    if (element.readyState >= 1) element.currentTime = target
+  }, [duration])
   const setVolume = (value) => { setVolumeState(value); if (audio.current) audio.current.volume = value; localStorage.setItem('conova.volume', String(value)) }
   return { playing, loading, position, duration, volume, setVolume, load, toggle, stop, seek, audio, graph }
 }

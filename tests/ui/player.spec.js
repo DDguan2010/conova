@@ -45,6 +45,53 @@ test('normal canvas has no text or playback icons and audio overlays stay within
   expect(errors).toEqual([])
 })
 
+test('scrubbing a two-hour recording previews continuously and performs one seek on release', async ({ page }) => {
+  const seconds = 7200, sampleRate = 8000, total = 44 + seconds * sampleRate * 2
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0); header.writeUInt32LE(total - 8, 4); header.write('WAVEfmt ', 8)
+  header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22)
+  header.writeUInt32LE(sampleRate, 24); header.writeUInt32LE(sampleRate * 2, 28)
+  header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34); header.write('data', 36); header.writeUInt32LE(total - 44, 40)
+  const ranges = []
+  await page.addInitScript(() => {
+    window.seekAssignments = []
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')
+    Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', { ...descriptor, set(value) { window.seekAssignments.push(value); descriptor.set.call(this, value) } })
+    const Audio = window.Audio
+    window.Audio = function (...args) { const element = new Audio(...args); window.playbackProbe = element; return element }
+    window.Audio.prototype = Audio.prototype
+  })
+  const track = { id: 'long', bvid: 'BV1234567890', title: 'Long recording', artist: 'Test', cover: '/covers/0.jpg', duration: seconds }
+  await page.route('**/api/session', (route) => route.fulfill({ json: { user: { mid: 1 }, library: [{ id: 'favorite:1', title: 'Long', tracks: [track] }] } }))
+  await page.route('**/api/track/*', (route) => route.fulfill({ json: { url: '/api/audio/long-test', duration: seconds } }))
+  await page.route('**/api/audio/long-test', async (route) => {
+    const range = route.request().headers().range || 'bytes=0-'
+    const match = /bytes=(\d+)-(\d*)/.exec(range)
+    const start = Number(match?.[1] || 0), end = Math.min(start + 256 * 1024 - 1, match?.[2] ? Number(match[2]) : total - 1, total - 1)
+    ranges.push({ start, end })
+    const body = Buffer.alloc(end - start + 1)
+    if (start < header.length) header.copy(body, 0, start, Math.min(header.length, end + 1))
+    await route.fulfill({ status: 206, headers: { 'Content-Type': 'audio/wav', 'Content-Length': String(body.length), 'Content-Range': `bytes ${start}-${end}/${total}`, 'Accept-Ranges': 'bytes' }, body })
+  })
+  await page.goto('/')
+  await page.getByTestId('current-cover').click()
+  await expect(page.locator('.app')).toHaveClass(/playing/)
+  await expect.poll(() => page.evaluate(() => window.playbackProbe.duration)).toBe(seconds)
+  await page.waitForTimeout(700)
+  const slider = page.getByRole('slider', { name: '播放进度' }), rect = await slider.boundingBox()
+  await page.mouse.move(rect.x + rect.width * .2, rect.y + rect.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(rect.x + rect.width * .75, rect.y + rect.height / 2, { steps: 18 })
+  expect(await page.evaluate(() => window.seekAssignments.length)).toBe(0)
+  expect(Number(await slider.inputValue())).toBeGreaterThan(5000)
+  await page.mouse.up()
+  await expect.poll(() => page.evaluate(() => window.seekAssignments.length)).toBe(1)
+  await expect.poll(() => page.evaluate(() => window.playbackProbe.seeking)).toBe(false)
+  expect(await page.evaluate(() => window.playbackProbe.currentTime)).toBeGreaterThan(5000)
+  expect(ranges.some(({ start }) => start > 60_000_000)).toBe(true)
+  await expect(page.locator('main')).toHaveText('')
+})
+
 test('long press scatters covers to plain text settings, single mode returns to textless canvas', async ({ page }) => {
   await page.goto('/?demo=1')
   await holdCover(page)

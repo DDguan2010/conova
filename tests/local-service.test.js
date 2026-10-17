@@ -86,7 +86,7 @@ test('local albums sync, persist, play through native media and can be removed',
   assert.equal((await app.service.request('/library/sync', { method: 'POST' })).results[0].ok, true)
   const audio = await app.service.request('/track/BV1234567890')
   assert.equal(audio.url, '/__conova/audio/ticket')
-  assert.equal(app.streams[0].cookie, 'SESSDATA=local-only')
+  assert.deepEqual(app.streams[0], { url: 'https://cdn.bilivideo.com/audio.m4s', backups: [] })
   await app.service.request('/library/favorite%3A123', { method: 'DELETE' })
   assert.deepEqual(app.snapshot.library, [])
 })

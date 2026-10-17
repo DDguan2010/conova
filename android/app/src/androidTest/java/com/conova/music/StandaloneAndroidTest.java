@@ -13,10 +13,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -80,6 +84,46 @@ public class StandaloneAndroidTest {
         assertEquals(400, NativeMedia.intercept(request, (url, kind, cookie, range, head) -> { fail("Must not fetch private hosts"); return null; }).getStatusCode());
     }
 
+    @Test public void audioFallsBackToPartnerCdnAndKeepsLongSeekRangesSmall() throws Exception {
+        String primary = "https://xy.mcdn.bilivideo.cn:8082/music.m4s";
+        String backup = "http://edge.mountaintoys.cn:4483/music.m4s";
+        for (int failure : new int[]{0, 403, 200}) {
+            String path = NativeMedia.register(primary, "", Arrays.asList(backup, "file:///invalid"));
+            List<String> attempts = new ArrayList<>();
+            final boolean[] discarded = {false};
+            NativeMedia.Opener upstream = (url, kind, cookie, range, head) -> {
+                attempts.add(url);
+                assertEquals("", cookie);
+                assertEquals("bytes=60000000-62097151", range);
+                if (url.equals(primary) && failure == 0) throw new IOException("node unavailable");
+                int status = url.equals(primary) ? failure : 206;
+                return new HttpURLConnection(new URL(url)) {
+                    @Override public void connect() {}
+                    @Override public boolean usingProxy() { return false; }
+                    @Override public void disconnect() { if (url.equals(primary)) discarded[0] = true; }
+                    @Override public int getResponseCode() { return status; }
+                    @Override public String getContentType() { return "audio/mp4"; }
+                    @Override public String getHeaderField(String name) {
+                        if (name.equals("Content-Range")) return "bytes 60000000-60000002/115200044";
+                        if (name.equals("Content-Length")) return "3";
+                        if (name.equals("Accept-Ranges")) return "bytes";
+                        return null;
+                    }
+                    @Override public InputStream getInputStream() { return new ByteArrayInputStream("xyz".getBytes(StandardCharsets.UTF_8)); }
+                };
+            };
+            WebResourceRequest request = request(path, Collections.singletonMap("Range", "bytes=60000000-"));
+            for (int index = 0; index < 2; index++) {
+                WebResourceResponse response = NativeMedia.intercept(request, upstream);
+                assertEquals(206, response.getStatusCode());
+                assertEquals("bytes 60000000-60000002/115200044", response.getResponseHeaders().get("Content-Range"));
+                assertEquals("xyz", NativeNetwork.read(response.getData()));
+            }
+            assertEquals(Arrays.asList(primary, backup, backup), attempts);
+            if (failure != 0) assertTrue(discarded[0]);
+        }
+    }
+
     @Test public void installedAppStartsWithLoginChoicesAndNoServerConfiguration() throws Exception {
         new NativeStateStore(context).write("{\"library\":[]}");
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
@@ -115,6 +159,21 @@ public class StandaloneAndroidTest {
             tapCover(scenario);
             waitFor(scenario, "document.querySelector('main').classList.contains('paused')");
             assertEquals("false", evaluate(scenario, "document.body.innerText.includes('服务地址')"));
+        }
+    }
+
+    @Test public void twoHourAudioSeeksThroughNativeHttpRangeProxy() throws Exception {
+        try (LongAudioServer audio = new LongAudioServer(); ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            String path = NativeMedia.register(audio.url(), "");
+            scenario.onActivity(activity -> activity.getBridge().getWebView().loadUrl("https://localhost/?demo=1"));
+            waitFor(scenario, "!!document.querySelector('[data-testid=current-cover]')");
+            evaluate(scenario, "(()=>{const d=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');Object.defineProperty(HTMLMediaElement.prototype,'src',{...d,set(v){window.__longAudio=this;d.set.call(this,v.includes('/audio/ambient.wav')?" + org.json.JSONObject.quote("https://localhost" + path) + ":v)}});return true})()");
+            tapCover(scenario);
+            waitFor(scenario, "window.__longAudio?.duration===7200 && document.querySelector('main').classList.contains('playing')");
+            evaluate(scenario, "(()=>{const i=document.querySelector('[aria-label=播放进度]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'5400');i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
+            waitFor(scenario, "!window.__longAudio.seeking && window.__longAudio.currentTime>=5400 && document.querySelector('main').classList.contains('playing')");
+            assertTrue("Seek must request the distant byte offset", audio.offsets.stream().anyMatch(value -> value > 60000000));
+            assertTrue("Each native read must stay bounded", audio.largestRange.get() <= NativeNetwork.AUDIO_CHUNK_SIZE);
         }
     }
 

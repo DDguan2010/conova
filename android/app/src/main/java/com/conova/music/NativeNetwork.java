@@ -8,17 +8,22 @@ import java.net.URI;
 import java.net.URL;
 
 final class NativeNetwork {
+    static final long AUDIO_CHUNK_SIZE = 2 * 1024 * 1024;
     static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/132.0.0.0 Safari/537.36";
 
     static boolean allowed(String value, String kind) {
         try {
             URI uri = new URI(value);
-            if (!"https".equals(uri.getScheme()) || uri.getUserInfo() != null || (uri.getPort() != -1 && uri.getPort() != 443)) return false;
+            if (uri.getUserInfo() != null || uri.getHost() == null) return false;
+            if ("audio".equals(kind)) return "https".equals(uri.getScheme()) || "http".equals(uri.getScheme());
+            if (!"https".equals(uri.getScheme())) return false;
+            int port = uri.getPort();
+            if (port != -1 && port != 443) return false;
             String host = uri.getHost();
             if (host == null) return false;
             host = host.toLowerCase(java.util.Locale.ROOT);
             if ("api".equals(kind)) return host.equals("api.bilibili.com") || host.equals("passport.bilibili.com");
-            String[] hosts = "audio".equals(kind) ? new String[]{"bilivideo.com", "bilivideo.cn", "biliapi.net"} : new String[]{"hdslb.com", "biliimg.com"};
+            String[] hosts = new String[]{"hdslb.com", "biliimg.com"};
             for (String suffix : hosts) if (host.equals(suffix) || host.endsWith("." + suffix)) return true;
         } catch (Exception ignored) {}
         return false;
@@ -35,7 +40,7 @@ final class NativeNetwork {
             connection.setRequestProperty("User-Agent", USER_AGENT);
             connection.setRequestProperty("Referer", "https://www.bilibili.com/");
             connection.setRequestProperty("Accept-Encoding", "identity");
-            if (cookie != null && !cookie.isEmpty() && !cookie.contains("\r") && !cookie.contains("\n")) connection.setRequestProperty("Cookie", cookie);
+            if ("api".equals(kind) && cookie != null && !cookie.isEmpty() && !cookie.contains("\r") && !cookie.contains("\n")) connection.setRequestProperty("Cookie", cookie);
             if (range != null && range.matches("bytes=(?:[0-9]{1,20}-[0-9]{0,20}|-[0-9]{1,20})")) connection.setRequestProperty("Range", range);
             int status = connection.getResponseCode();
             if (status != 301 && status != 302 && status != 303 && status != 307 && status != 308) return connection;
@@ -45,6 +50,18 @@ final class NativeNetwork {
             address = new URL(new URL(address), location).toString();
         }
         throw new IOException("B 站重定向次数过多。");
+    }
+
+    static String audioRange(String value) {
+        if (value == null || !value.matches("bytes=(?:[0-9]{1,20}-[0-9]{0,20}|-[0-9]{1,20})")) return null;
+        if (value.startsWith("bytes=-")) return value;
+        try {
+            String[] parts = value.substring(6).split("-", -1);
+            java.math.BigInteger start = new java.math.BigInteger(parts[0]);
+            java.math.BigInteger limit = start.add(java.math.BigInteger.valueOf(AUDIO_CHUNK_SIZE - 1));
+            java.math.BigInteger end = parts[1].isEmpty() ? limit : new java.math.BigInteger(parts[1]);
+            return "bytes=" + start + "-" + end.min(limit);
+        } catch (NumberFormatException ignored) { return null; }
     }
 
     static String read(InputStream input) throws IOException {

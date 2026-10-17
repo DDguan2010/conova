@@ -12,6 +12,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.net.HttpURLConnection;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -60,7 +61,12 @@ public class ConovaNativePlugin extends Plugin {
     }
 
     @PluginMethod public void registerAudio(PluginCall call) {
-        try { call.resolve(new JSObject().put("url", NativeMedia.register(call.getString("url"), call.getString("cookie", "")))); }
+        try {
+            JSArray values = call.getArray("backups", new JSArray());
+            List<String> backups = new ArrayList<>();
+            for (int index = 0; index < values.length(); index++) if (values.opt(index) instanceof String) backups.add(values.getString(index));
+            call.resolve(new JSObject().put("url", NativeMedia.register(call.getString("url"), call.getString("cookie", ""), backups)));
+        }
         catch (Exception error) { call.reject("音频地址无效。"); }
     }
 

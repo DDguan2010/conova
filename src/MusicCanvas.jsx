@@ -3,6 +3,7 @@ import { Waveform } from './Waveform'
 import { CenterView } from './CenterView'
 import { scatterPosition } from './motion'
 import { useTileMotion } from './useTileMotion'
+import { SeekBar } from './SeekBar'
 
 export function MusicCanvas({ player, view, mode, tiles, tileSize, step, sceneSize, scattered, scene, vm, beginGesture, moveGesture, endGesture, suppressClick, holdTimer, gesture, select, track, openView }) {
   const targets = tiles.map((tile) => {
@@ -34,8 +35,7 @@ export function MusicCanvas({ player, view, mode, tiles, tileSize, step, sceneSi
             </button>
             {tile.active && <div className="cover-audio" style={{ '--cover-art': `url("${coverUrl(tile.track.cover)}")` }} onPointerDown={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()} onPointerMove={(event) => event.stopPropagation()}>
               <Waveform player={player} cover={coverUrl(tile.track.cover)} />
-              <div className="progress-track" style={{ '--progress': `${player.duration ? player.position / player.duration * 100 : 0}%` }}><span className="progress-fill" /></div>
-              <input className="cover-progress" type="range" aria-label="播放进度" min="0" max={player.duration || tile.track.duration || 1} step="0.1" value={player.position} onChange={(event) => player.seek(Number(event.target.value))} />
+              <SeekBar player={player} fallbackDuration={tile.track.duration} />
             </div>}
           </div>
         })}

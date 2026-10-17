@@ -1,4 +1,4 @@
-import { Bilibili, BiliError, isMediaHost } from '../server/bilibili.js'
+import { Bilibili, BiliError } from '../server/bilibili.js'
 
 // Android shares the desktop's Bilibili operations. Only networking, private
 // storage and the official login page cross the native bridge.
@@ -99,9 +99,9 @@ export function createLocalService({ storage, fetcher, media, login, clearLogin,
       authenticated()
       const version = epoch
       const result = await bili.audio(url.pathname.slice('/track/'.length))
+      signal?.throwIfAborted()
       if (epoch !== version) throw new BiliError('登录状态已改变，请重新操作。', 401)
-      if (!isMediaHost(result.url)) throw new BiliError('音频地址不属于受支持的 B 站媒体服务。')
-      const { url: localUrl } = await media.register({ url: result.url, cookie: session.biliCookie || '' })
+      const { url: localUrl } = await media.register({ url: result.url, backups: result.backups })
       return { url: localUrl, duration: result.duration }
     }
     throw new BiliError('接口不存在。', 404)

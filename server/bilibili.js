@@ -144,18 +144,34 @@ export class Bilibili {
     const subKey = new URL(nav.wbi_img.sub_url).pathname.split('/').pop().split('.')[0]
     const params = signWbi({ bvid, cid: video.cid, fnval: 16, fnver: 0, fourk: 1 }, imageKey, subKey)
     const { data } = await this.request('/x/player/wbi/playurl', params)
-    const audio = [...(data?.dash?.audio || [])].sort((a, b) => (b.bandwidth || 0) - (a.bandwidth || 0))[0]
-    const url = audio?.baseUrl || audio?.base_url
-    if (!url) throw new BiliError('该视频没有可用音频，可能已失效或需要额外权限。')
-    return { url, duration: video.duration, title: video.title, backups: audio.backupUrl || audio.backup_url || [] }
+    const streams = [...(data?.dash?.audio || [])].sort((a, b) => (b.bandwidth || 0) - (a.bandwidth || 0))
+    if (!streams.length) throw new BiliError('该视频没有可用音频，可能已失效或需要额外权限。')
+    for (const audio of streams) {
+      const backups = [audio.backupUrl, audio.backup_url].flatMap((value) => Array.isArray(value) ? value : [])
+      const urls = [...new Set([audio.baseUrl, audio.base_url, ...backups].map(normalizeMediaUrl).filter(Boolean))]
+      // Prefer ordinary HTTPS, keeping every address from this representation
+      // as a fallback, including Bilibili's partner CDNs and peer nodes.
+      const rank = (value) => { const url = new URL(value); return url.protocol === 'https:' ? Number(Boolean(url.port)) : 2 }
+      urls.sort((a, b) => rank(a) - rank(b))
+      if (urls.length) return { url: urls[0], duration: video.duration, title: video.title, backups: urls.slice(1) }
+    }
+    throw new BiliError('B 站暂未返回可用的音频地址，请稍后重试。')
   }
 }
 
-export function isMediaHost(url) {
+export function isMediaUrl(url) {
   try {
     const parsed = new URL(url)
-    return parsed.protocol === 'https:' && !parsed.username && !parsed.password && (!parsed.port || parsed.port === '443') && ['bilivideo.com', 'bilivideo.cn', 'biliapi.net'].some((host) => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`))
+    return ['http:', 'https:'].includes(parsed.protocol) && Boolean(parsed.hostname) && !parsed.username && !parsed.password
   } catch { return false }
+}
+
+export function normalizeMediaUrl(value) {
+  if (typeof value !== 'string' || !value) return null
+  try {
+    const parsed = new URL(value)
+    return isMediaUrl(parsed.href) ? parsed.href : null
+  } catch { return null }
 }
 
 export function isImageHost(url) {

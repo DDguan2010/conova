@@ -5,8 +5,9 @@ import { randomBytes } from 'node:crypto'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import QRCode from 'qrcode'
-import { Bilibili, BiliError, isMediaHost, isImageHost } from './bilibili.js'
+import { Bilibili, BiliError, isMediaUrl, isImageHost } from './bilibili.js'
 import { SessionStore } from './store.js'
+import { audioRange } from './media.js'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -127,11 +128,10 @@ export async function createApp({ dataDir = resolve(projectRoot, '.data'), fetch
   })
   app.get('/api/track/:bvid', async (req, res) => {
     const result = await req.bili.audio(req.params.bvid)
-    if (!isMediaHost(result.url)) throw new BiliError('音频地址不属于受支持的 B 站媒体服务。')
     for (const [ticket, value] of tickets) if (value.expiresAt < Date.now()) tickets.delete(ticket)
     if (tickets.size > 1000) tickets.delete(tickets.keys().next().value)
     const ticket = randomBytes(32).toString('hex')
-    tickets.set(ticket, { ...result, owner: req.sessionId, cookie: req.session.biliCookie, expiresAt: Date.now() + 2 * 3600000 })
+    tickets.set(ticket, { ...result, urls: [result.url, ...result.backups], owner: req.sessionId, expiresAt: Date.now() + 2 * 3600000 })
     res.json({ url: `/api/audio/${ticket}`, duration: result.duration })
   })
   async function mediaFetch(url, options, validator, redirects = 0) {
@@ -150,10 +150,30 @@ export async function createApp({ dataDir = resolve(projectRoot, '.data'), fetch
     if (!ticket || ticket.expiresAt < Date.now() || !store.get(ticket.owner)) throw new BiliError('播放地址已过期，请重新播放。', 410)
     const controller = new AbortController()
     res.on('close', () => controller.abort())
-    const headers = { Referer: 'https://www.bilibili.com/', 'User-Agent': 'Mozilla/5.0', Cookie: ticket.cookie || '' }
-    if (req.headers.range) headers.Range = req.headers.range
-    const upstream = await mediaFetch(ticket.url, { headers, method: req.method === 'HEAD' ? 'HEAD' : 'GET', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(45000)]) }, isMediaHost)
-    if (![200, 206, 416].includes(upstream.status)) throw new BiliError('音频连接中断，请重新点击播放。')
+    // Media URLs already contain playback signatures. Do not forward account
+    // cookies to the third-party CDNs returned by playurl or its redirects.
+    const headers = { Referer: 'https://www.bilibili.com/', 'User-Agent': 'Mozilla/5.0' }
+    const range = audioRange(req.headers.range)
+    if (range) headers.Range = range
+    const options = { headers, method: req.method === 'HEAD' ? 'HEAD' : 'GET', signal: controller.signal }
+    let upstream, fullResponse, fullUrl
+    try {
+      for (const url of new Set([ticket.url, ...ticket.urls])) {
+        options.signal.throwIfAborted()
+        const connectionTimeout = new AbortController()
+        const timer = setTimeout(() => connectionTimeout.abort(), 18000)
+        try {
+          const response = await mediaFetch(url, { ...options, signal: AbortSignal.any([options.signal, connectionTimeout.signal]) }, isMediaUrl)
+          if ([206, 416].includes(response.status) || (response.status === 200 && (!range || req.method === 'HEAD'))) { upstream = response; ticket.url = url; break }
+          if (response.status === 200 && !fullResponse) { fullResponse = response; fullUrl = url; continue }
+          await response.body?.cancel()
+        } catch { options.signal.throwIfAborted() }
+        finally { clearTimeout(timer) }
+      }
+    } finally { if (options.signal.aborted) await fullResponse?.body?.cancel() }
+    if (upstream) await fullResponse?.body?.cancel()
+    else if (fullResponse) { upstream = fullResponse; ticket.url = fullUrl }
+    if (!upstream) throw new BiliError('音频连接中断，请重新点击播放。')
     res.status(upstream.status)
     for (const header of ['content-type', 'content-length', 'content-range', 'accept-ranges']) if (upstream.headers.has(header)) res.setHeader(header, upstream.headers.get(header))
     res.setHeader('Cache-Control', 'private, no-store')
