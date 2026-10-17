@@ -94,6 +94,7 @@ final class NativeMedia {
             if (status == 416) headers.put("Content-Length", "0");
             InputStream body;
             if (head || status == 416) { connection.disconnect(); body = new ByteArrayInputStream(new byte[0]); }
+            else if (kind.equals("audio")) body = MediaInputStream.open(connection);
             else body = new FilterInputStream(connection.getInputStream()) {
                 @Override public void close() throws IOException { try { super.close(); } finally { connection.disconnect(); } }
             };
