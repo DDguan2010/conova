@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Conova</string>
+    <string name="title_activity_main">Conova</string>
+    <string name="package_name">com.conova.music</string>
+    <string name="custom_url_scheme">com.conova.music</string>
+</resources>

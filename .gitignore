@@ -1,0 +1,16 @@
+node_modules/
+dist/
+release/
+release-ready/
+release-desktop/
+.data/
+.env
+.env.local
+test-results/
+playwright-report/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/src/main/assets/public/
+.artifacts/
+*.log

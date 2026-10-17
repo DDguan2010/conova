@@ -1,0 +1,8 @@
+{
+  "appId": "com.conova.music",
+  "appName": "Conova",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#000000", "allowMixedContent": false },
+  "plugins": { "SplashScreen": { "backgroundColor": "#000000", "showSpinner": false } }
+}
