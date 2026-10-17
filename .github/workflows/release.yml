@@ -1,0 +1,247 @@
+name: Build and release
+run-name: Conova ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号，例如 0.1.0（可带 v 前缀）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conova-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate version and run tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      android_version_code: ${{ steps.version.outputs.android_version_code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Validate version
+        id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: node scripts/release-version.mjs
+
+      - name: Check Android signing configuration
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing repository secret: $name. See docs/releases.md."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Reject an existing version
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const tag = process.env.RELEASE_TAG
+            const checks = [
+              () => github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` }),
+              () => github.rest.repos.getReleaseByTag({ owner, repo, tag }),
+            ]
+            for (const check of checks) {
+              try {
+                await check()
+                core.setFailed(`${tag} already exists. Choose a new version; published packages are never overwritten.`)
+                return
+              } catch (error) {
+                if (error.status !== 404) throw error
+              }
+            }
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  android:
+    name: Signed Android APK
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      ANDROID_VERSION_CODE: ${{ needs.prepare.outputs.android_version_code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - name: Install Android SDK packages
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Restore signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          umask 077
+          key_path="$RUNNER_TEMP/conova-release.keystore"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$key_path"
+          keytool -list -keystore "$key_path" -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS"
+          echo "CONOVA_KEYSTORE_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+
+      - name: Set package version
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Build web app and sync Capacitor
+        env:
+          VITE_API_BASE: ${{ vars.CONOVA_API_BASE }}
+        run: npm run android:sync
+
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          bash ./gradlew --no-daemon :app:assembleRelease \
+            -PconovaVersion="$RELEASE_VERSION" \
+            -PconovaVersionCode="$ANDROID_VERSION_CODE"
+
+      - name: Verify and collect APK
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
+          mkdir -p release
+          cp android/app/build/outputs/apk/release/app-release.apk "release/Conova-${RELEASE_VERSION}-android.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conova-android
+          path: release/Conova-*-android.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/conova-release.keystore"
+
+  windows:
+    name: Windows x64 EXE installer
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies and Electron
+        run: npm ci
+
+      - name: Set package version
+        run: npm version "$env:RELEASE_VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Build NSIS installer
+        run: npm run pack:win -- --publish never
+
+      - name: Upload EXE installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conova-windows
+          path: release/Conova-*-windows-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    needs: [prepare, android, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: conova-*
+          merge-multiple: true
+          path: release
+
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum ./*.apk ./*.exe > SHA256SUMS.txt
+
+      - name: Create draft and upload installers
+        run: |
+          gh release create "$RELEASE_TAG" \
+            release/*.apk release/*.exe release/SHA256SUMS.txt \
+            --repo "$GH_REPO" --target "$RELEASE_COMMIT" \
+            --title "Conova $RELEASE_VERSION" --generate-notes --draft
+
+      - name: Publish release
+        run: |
+          gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --draft=false --latest
+          release_url="$(gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json url --jq .url)"
+          printf '### Conova %s\n\n[Download APK and EXE](%s)\n' "$RELEASE_VERSION" "$release_url" >> "$GITHUB_STEP_SUMMARY"

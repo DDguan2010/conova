@@ -30,6 +30,10 @@ npm run pack:win:dir
 
 Windows 程序内置本地 Node.js 服务。账号登录会打开 Bilibili 官方登录页，也可扫码登录。
 
+## GitHub 自动发布
+
+在 GitHub **Actions → Build and release → Run workflow** 输入版本号，即可并行构建 Android APK 和 Windows EXE 安装包，并发布到对应版本的 Release。首次使用需配置 Android 签名 Secrets，详见 [发布安装包](docs/releases.md)。
+
 ## Android
 
 ```powershell
