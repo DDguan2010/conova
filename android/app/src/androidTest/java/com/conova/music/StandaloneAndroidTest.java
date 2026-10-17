@@ -97,10 +97,11 @@ public class StandaloneAndroidTest {
                 assertEquals("bytes=60000000-62097151", range);
                 if (url.equals(primary) && failure == 0) throw new IOException("node unavailable");
                 int status = url.equals(primary) ? failure : 206;
+                boolean firstNode = url.equals(primary);
                 return new HttpURLConnection(new URL(url)) {
                     @Override public void connect() {}
                     @Override public boolean usingProxy() { return false; }
-                    @Override public void disconnect() { if (url.equals(primary)) discarded[0] = true; }
+                    @Override public void disconnect() { if (firstNode) discarded[0] = true; }
                     @Override public int getResponseCode() { return status; }
                     @Override public String getContentType() { return "audio/mp4"; }
                     @Override public String getHeaderField(String name) {
@@ -222,6 +223,6 @@ public class StandaloneAndroidTest {
             if ("true".equals(evaluate(scenario, "(()=>{try{return Boolean(" + expression + ")}catch(e){return false}})()"))) return;
             Thread.sleep(200);
         }
-        fail("Android WebView condition not met: " + expression + "; body=" + evaluate(scenario, "document.body.innerText") + "; touches=" + evaluate(scenario, "JSON.stringify(window.__touches)"));
+        fail("Android WebView condition not met: " + expression + "; body=" + evaluate(scenario, "document.body.innerText") + "; touches=" + evaluate(scenario, "JSON.stringify(window.__touches)") + "; media=" + evaluate(scenario, "JSON.stringify((()=>{const a=window.__longAudio,i=document.querySelector('[aria-label=播放进度]');return a?{time:a.currentTime,duration:a.duration,seeking:a.seeking,ready:a.readyState,paused:a.paused,error:a.error?.message,seekable:Array.from({length:a.seekable.length},(_,n)=>[a.seekable.start(n),a.seekable.end(n)]),buffered:Array.from({length:a.buffered.length},(_,n)=>[a.buffered.start(n),a.buffered.end(n)]),value:i?.value,max:i?.max,classes:document.querySelector('main')?.className}:null})())"));
     }
 }

@@ -55,6 +55,7 @@ final class LongAudioServer implements AutoCloseable {
                 largestRange.accumulateAndGet(end - start + 1, Math::max);
             }
             offsets.add(start);
+            android.util.Log.i("ConovaLongAudio", "Range " + range + " -> " + start + "-" + end);
             OutputStream output = connection.getOutputStream();
             String headers = "HTTP/1.1 " + (range == null ? "200 OK" : "206 Partial Content") + "\r\nContent-Type: audio/wav\r\nAccept-Ranges: bytes\r\nContent-Length: " + (end - start + 1)
                 + (range == null ? "" : "\r\nContent-Range: bytes " + start + "-" + end + "/" + TOTAL) + "\r\nConnection: close\r\n\r\n";
