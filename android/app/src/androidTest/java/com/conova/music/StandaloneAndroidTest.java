@@ -5,6 +5,7 @@ import android.content.Context;
 import android.net.Uri;
 import android.os.SystemClock;
 import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -169,7 +170,12 @@ public class StandaloneAndroidTest {
             scenario.onActivity(activity -> activity.getBridge().getWebView().loadUrl("https://localhost/?demo=1"));
             waitFor(scenario, "!!document.querySelector('[data-testid=current-cover]')");
             evaluate(scenario, "(()=>{const d=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');Object.defineProperty(HTMLMediaElement.prototype,'src',{...d,set(v){window.__longAudio=this;d.set.call(this,v.includes('/audio/ambient.wav')?" + org.json.JSONObject.quote("https://localhost" + path) + ":v)}});return true})()");
-            tapCover(scenario);
+            // The separate packagedAudio test covers real touchscreen input.
+            // Start this range regression with a trusted hardware activation so
+            // cold-emulator touch scheduling cannot obscure the network result.
+            scenario.onActivity(activity -> activity.getBridge().getWebView().requestFocus());
+            evaluate(scenario, "document.querySelector('[data-testid=current-cover]').focus();true");
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER);
             waitFor(scenario, "window.__longAudio?.duration===7200 && document.querySelector('main').classList.contains('playing')");
             evaluate(scenario, "(()=>{const i=document.querySelector('[aria-label=播放进度]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'5400');i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));return true})()");
             waitFor(scenario, "!window.__longAudio.seeking && window.__longAudio.currentTime>=5400 && document.querySelector('main').classList.contains('playing')");
