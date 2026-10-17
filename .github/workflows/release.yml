@@ -9,6 +9,7 @@ on:
         required: true
         type: string
 
+# Reuse the repository signing identity for every Android release.
 permissions:
   contents: read
 

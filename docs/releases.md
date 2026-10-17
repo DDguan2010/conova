@@ -31,6 +31,8 @@ Windows PowerShell 可用以下命令把 Base64 字符串复制到剪贴板，�
 
 工作流缺少任何一项时会在构建前报出对应名称。运行期间密钥仅写入临时目录，构建结束后清理，不会进入安装包、Artifacts 或 Release。
 
+配置完成后另行安全备份原始密钥文件、别名和密码。GitHub Secrets 不能读取原值，不能代替密钥备份；后续发布直接复用已有四项 Secret。
+
 ## 可选：预设 Android 服务地址
 
 在同一设置页的 **Variables** 中添加 `CONOVA_API_BASE`，值为你的 HTTPS Node.js 服务源地址，例如 `https://music.example.com`。
