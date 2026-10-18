@@ -1,80 +1,177 @@
-# Conova
+<p align="center">
+  <img src="public/favicon.svg" width="96" alt="Conova 图标">
+</p>
 
-基于 Node.js 的 Bilibili 音乐播放器，使用 React、Electron 和 Capacitor 适配 Windows 与 Android。
+<h1 align="center">Conova</h1>
 
-应用标题统一为 `Conova`，图标为黑底白色空心矩形框。图形源文件是 `public/favicon.svg`，`scripts/generate-icons.py` 使用 Pillow 生成 Windows ICO/PNG 和 Android 各分辨率图标。
+<p align="center">面向 Bilibili 内容的极简音乐播放器</p>
 
-播放界面只保留方形封面。点击封面播放或暂停，左右滑动切歌，上下滑动切换收藏夹或合集，长按封面打开文字设置。播放时封面恢复彩色，暂停时变为黑白；单曲循环时只把当前封面留在中央。
+<p align="center">
+  <a href="https://github.com/DDguan2010/conova/releases/tag/v0.1.0">最新版本</a>
+  ·
+  <a href="https://github.com/DDguan2010/conova/actions">构建状态</a>
+</p>
 
-波形和进度条位于当前封面内部的下沿，使用高斯模糊后的封面颜色填充自身轮廓。设置界面的封面随机错位散落在四周。弹簧动画在切换目标时保留当前位置和速度，可以连续打断。
+Conova 是一款基于 Node.js、React、Electron 和 Capacitor 构建的音乐播放器。它将 Bilibili 收藏夹、合集和追更内容整理为专辑式播放界面，当前支持 Windows 和 Android，并提供浏览器开发模式。
 
-音频直接使用 B 站播放接口返回的 HTTP/HTTPS 地址，支持第三方 CDN 和非标准媒体端口，不按域名拦截。优先使用标准 HTTPS 节点，连接失败或不支持 Range 时尝试同音轨的备用地址；媒体请求不携带账号 Cookie。拖动进度条时预览位置，松手只提交一次跳转；每次 Range 读取最多 2 MiB，避免长音频在原位置持续下载。
+项目的核心设计是克制、直接和连续：主播放界面不显示多余文字或传统播放按钮，用户通过点击封面播放或暂停，通过手势切换音乐和专辑；设置与管理操作以统一的文字界面呈现。
 
-## 本地开发
+## 功能特性
 
-使用 Node.js 22.12+ 或 24，在项目目录运行：
+- **极简播放界面**：黑色背景、白色文字、方形封面和纯色平面视觉风格。
+- **直接操作**：点击封面播放或暂停，左右滑动切换音乐，上下滑动切换专辑。
+- **封面内播放反馈**：进度条和波形图直接显示在当前封面内部，并使用封面颜色生成模糊视觉效果。
+- **连续动画**：专辑切换和设置界面使用可打断的弹簧动画，支持在动画过程中反向操作。
+- **播放模式**：支持顺序播放、随机播放和单曲循环。
+- **Bilibili 内容同步**：支持账号收藏夹以及“我追的专辑/收藏夹”，支持分页加载、自动同步和手动刷新。
+- **Android 后台播放**：提供系统通知栏、锁屏播放控制、上一首、下一首、播放/暂停和进度调整。
+- **长音频优化**：支持 HTTP/HTTPS 音频地址、备用节点切换、Range 分段读取和长音频快速拖动。
+- **独立客户端**：Android 和 Windows 均可直接运行，不要求额外部署 Conova 服务。
+
+## 下载
+
+当前版本：**0.1.0**
+
+- [Android APK](https://github.com/DDguan2010/conova/releases/download/v0.1.0/Conova-0.1.0-android.apk)
+- [Windows x64 安装包](https://github.com/DDguan2010/conova/releases/download/v0.1.0/Conova-0.1.0-windows-x64-setup.exe)
+- [SHA256 校验文件](https://github.com/DDguan2010/conova/releases/download/v0.1.0/SHA256SUMS.txt)
+
+Android APK 的签名由仓库正式签名密钥生成。Windows 安装包当前未配置代码签名证书。
+
+## 快速开始
+
+### 环境要求
+
+- Node.js 22.12+ 或 Node.js 24
+- npm
+- Windows 开发需要 Electron 依赖
+- Android 构建需要 Android SDK 和 JDK 21
+
+### 安装依赖
 
 ```powershell
 npm install
+```
+
+### 启动开发环境
+
+```powershell
 npm run dev
 ```
 
-打开 http://127.0.0.1:5173 登录 Bilibili。打开 http://127.0.0.1:5173/?demo=1 可直接查看交互样本，样本使用本地封面和原创合成音频。
+开发服务器默认使用 `http://127.0.0.1:5173`。浏览器开发模式通过本地 Node.js 服务访问 Bilibili 接口，服务默认监听 `127.0.0.1:3210`。
+
+如需直接查看交互样本，可打开：
+
+```text
+http://127.0.0.1:5173/?demo=1
+```
+
+演示模式使用本地封面和原创合成音频，不需要登录 Bilibili。
 
 ## Windows
 
+启动桌面开发版本：
+
 ```powershell
 npm run desktop
+```
+
+生成目录版程序：
+
+```powershell
 npm run pack:win:dir
 ```
 
-打包后的程序为 `release/win-unpacked/Conova.exe`，运行和分发时需要保留整个 `win-unpacked` 目录。`npm run pack:win` 可生成 NSIS 安装包。
+生成 NSIS 安装包：
 
-Windows 程序内置本地 Node.js 服务。账号登录会打开 Bilibili 官方登录页，也可扫码登录。
+```powershell
+npm run pack:win
+```
 
-## GitHub 自动发布
+目录版程序位于 `release/win-unpacked/Conova.exe`。分发目录版程序时，应保留整个 `win-unpacked` 目录。
 
-在 GitHub **Actions → Build and release → Run workflow** 输入版本号，即可并行构建 Android APK 和 Windows EXE 安装包，并发布到对应版本的 Release。首次使用需配置 Android 签名 Secrets，详见 [发布安装包](docs/releases.md)。
+Windows 客户端内置本地 Node.js 服务。账号登录使用 Bilibili 官方登录页面，支持扫码登录和账号登录流程。
 
 ## Android
+
+Android 客户端是可独立运行的完整应用，不需要填写服务地址，也不依赖外部 Conova 服务。
+
+同步并打开 Android 工程：
 
 ```powershell
 npm run android:sync
 npm run android:open
 ```
 
-Android 是可独立使用的完整客户端，无需部署服务或填写服务地址。它与 Windows 复用 B 站接口逻辑，通过 Android 原生 HTTPS 网络访问 B 站，支持扫码和官方页面账号登录、收藏夹与合集同步、音频播放和拖动进度。登录凭据和已选专辑由 Android Keystore 加密保存在本机；退出登录会清理凭据和播放授权。
+Android 客户端通过原生 HTTPS 网络访问 Bilibili，并在本地完成以下功能：
 
-浏览器版也可独立部署 Node.js 服务：
+- Bilibili 扫码和官方页面登录
+- 收藏夹、合集和追更来源同步
+- 音频播放、进度拖动和备用节点切换
+- Android 通知栏与锁屏播放控制
+- 本地登录状态、专辑和播放授权管理
 
-```powershell
-npm run build
-npm start
-```
+登录凭据由 Android 本机安全存储保护。退出登录时会清理本机凭据、音频授权和已缓存的播放来源。
 
-浏览器服务默认监听 `127.0.0.1:3210`。构建 APK 需要 Android SDK 和 JDK 21，也可以直接使用 GitHub Actions。Android 仪器测试覆盖独立启动、原生桥接、本机加密存储、音频 Range 和 WebView 播放/拖动。
+## 项目结构
 
-## 收藏夹与同步
+| 目录 | 作用 |
+| --- | --- |
+| `src/` | React 播放界面、手势交互、播放状态和 Android 桥接 |
+| `server/` | 浏览器和 Windows 客户端使用的 Node.js 服务及 Bilibili 接口封装 |
+| `electron/` | Windows Electron 主进程和桌面端服务启动逻辑 |
+| `android/` | Capacitor Android 工程、原生网络、媒体服务和安全存储 |
+| `tests/` | Node.js 接口测试、状态逻辑测试和 Playwright 界面测试 |
+| `docs/` | 发布、签名和 GitHub Actions 说明 |
+| `public/` | 图标和静态资源 |
 
-长按封面进入“管理专辑”，选择“我的收藏夹”或“我追的合集/收藏夹”，点选需要加载的条目。每个来源占一行，横向排列其视频封面。移除只改变 Conova 本地选择。
+## 测试与验证
 
-打开自动同步后，前台每五分钟刷新已选来源，返回前台时也会检查刷新。可以在设置中手动刷新。加载使用完整分页；单个来源同步失败时保留其上次完整数据。
-
-## 验证
+运行 Node.js 测试：
 
 ```powershell
 npm test
+```
+
+运行 Playwright 界面测试：
+
+```powershell
 npm run test:ui
 ```
 
-界面测试使用本机 Microsoft Edge，包括无文字播放画面、封面内波形和进度条、手机滑动、长按设置、单曲循环、动画途中反向切换和两小时音频拖动只跳转一次。接口测试覆盖分页、来源类型、登录校验、会话存储、同步失败保留、第三方 CDN 回退和长音频 Range 分段请求。
+测试覆盖播放界面、封面内波形和进度条、手机手势、长按设置、播放模式、动画反向切换、登录校验、收藏夹分页、同步失败保留、第三方 CDN 回退和长音频 Range 请求。
 
-已验证真实 Bilibili 二维码生成。实际扫码、真实账号收藏夹和音频播放仍需账号联调；自动化测试使用模拟接口验证对应流程。
+真实 Bilibili 账号登录、收藏夹内容和音频播放需要在实际设备或桌面环境中进行联调；自动化测试使用隔离的模拟接口验证对应逻辑。
 
-## 参考
+## 自动发布
 
-- https://github.com/bbplayer-app/bbplayer
-- https://github.com/eason919191/BiliMusic
-- https://github.com/chthollyphile/folia-major
+项目使用 GitHub Actions 自动构建 Android APK 和 Windows x64 安装包。发布流程只支持手动触发：
 
-参考了功能与接口组织，当前界面和实现独立编写。
+1. 打开仓库的 **Actions → Build and release**。
+2. 点击 **Run workflow**。
+3. 输入三段式版本号，例如 `0.1.1` 或 `v0.1.1`。
+4. 工作流完成后，安装包会发布到对应版本的 GitHub Release。
+
+发布前需要配置 Android 签名 Secrets。完整的密钥生成、Secrets 配置、版本规则和故障处理说明见 [docs/releases.md](docs/releases.md)。
+
+如需修复已经发布版本的 Android APK，使用 **Rebuild Android APK** 工作流。该流程只替换指定 Release 的 APK 和校验文件，不修改 Windows 安装包或 Git 标签。
+
+## 配置说明
+
+浏览器或服务端开发可参考 `.env.example`：
+
+```env
+PORT=3210
+HOST=127.0.0.1
+```
+
+Android 和 Windows 客户端独立运行，不需要配置 `CONOVA_API_BASE`。请勿将 Bilibili Cookie、签名密钥或其他凭据提交到仓库、环境文件或构建参数中。
+
+## 参考项目
+
+- [bbplayer-app/bbplayer](https://github.com/bbplayer-app/bbplayer)
+- [eason919191/BiliMusic](https://github.com/eason919191/BiliMusic)
+- [chthollyphile/folia-major](https://github.com/chthollyphile/folia-major)
+
+Conova 参考了上述项目在媒体播放、Bilibili 数据接入和交互组织方面的思路，界面设计与当前实现独立完成。
