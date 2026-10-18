@@ -6,6 +6,8 @@ export const canAccountLogin = native || Boolean(window.conova?.login)
 const base = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
 const local = native ? import('./android-service') : null
 export async function accountLogin() { return native ? (await local).androidLogin() : window.conova.login() }
+export async function updateNativeMedia(options) { if (native) return (await local).androidMedia.update(options) }
+export async function listenNativeMedia(callback) { if (native) return (await local).androidMedia.addListener('mediaControl', callback) }
 export function mediaUrl(path) { return !native && path?.startsWith('/api/') ? `${base}${path}` : path }
 export function coverUrl(url) {
   if (!url || url.startsWith('/') || url.startsWith('data:')) return url

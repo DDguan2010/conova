@@ -14,7 +14,7 @@ const service = createLocalService({
     options.signal?.throwIfAborted()
     return { ok: result.status >= 200 && result.status < 300, status: result.status, json: async () => JSON.parse(result.data), headers: { getSetCookie: () => result.setCookies || [] } }
   },
-  media: { register: (options) => bridge.registerAudio(options), clear: () => bridge.clearMedia() },
+  media: { register: (options) => bridge.registerAudio(options), update: (options) => bridge.updateMedia(options), clear: () => bridge.clearMedia() },
   login: () => bridge.login(),
   clearLogin: () => bridge.clearLogin(),
   qrImage: (url) => QRCode.toDataURL(url, { width: 240, margin: 1, errorCorrectionLevel: 'M' }),
@@ -22,3 +22,7 @@ const service = createLocalService({
 
 export const androidApi = service.request
 export const androidLogin = service.accountLogin
+export const androidMedia = {
+  update: (options) => bridge.updateMedia(options),
+  addListener: (event, callback) => bridge.addListener(event, callback),
+}

@@ -20,11 +20,22 @@ import java.util.concurrent.Executors;
 
 @CapacitorPlugin(name = "ConovaNative")
 public class ConovaNativePlugin extends Plugin {
+    private static volatile ConovaNativePlugin instance;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
     private NativeStateStore store;
     private boolean loggingIn;
 
-    @Override public void load() { store = new NativeStateStore(getContext()); }
+    @Override public void load() { instance = this; store = new NativeStateStore(getContext()); }
+
+    static void dispatchMediaAction(String action) {
+        ConovaNativePlugin plugin = instance;
+        if (plugin != null) plugin.notifyListeners("mediaControl", new JSObject().put("action", action));
+    }
+
+    static void dispatchMediaSeek(long position) {
+        ConovaNativePlugin plugin = instance;
+        if (plugin != null) plugin.notifyListeners("mediaControl", new JSObject().put("action", "seekto").put("seekTime", position / 1000d));
+    }
 
     @PluginMethod public void request(PluginCall call) {
         executor.execute(() -> {
@@ -65,12 +76,19 @@ public class ConovaNativePlugin extends Plugin {
             JSArray values = call.getArray("backups", new JSArray());
             List<String> backups = new ArrayList<>();
             for (int index = 0; index < values.length(); index++) if (values.opt(index) instanceof String) backups.add(values.getString(index));
-            call.resolve(new JSObject().put("url", NativeMedia.register(call.getString("url"), call.getString("cookie", ""), backups)));
+            String path = NativeMedia.register(call.getString("url"), call.getString("cookie", ""), backups);
+            ConovaPlaybackService.update(getContext(), call.getString("title", "Conova"), call.getString("artist", ""), call.getDouble("duration", 0d).longValue() * 1000L, 0, false);
+            call.resolve(new JSObject().put("url", path));
         }
         catch (Exception error) { call.reject("音频地址无效。"); }
     }
 
-    @PluginMethod public void clearMedia(PluginCall call) { NativeMedia.clear(); call.resolve(); }
+    @PluginMethod public void updateMedia(PluginCall call) {
+        ConovaPlaybackService.update(getContext(), call.getString("title", "Conova"), call.getString("artist", ""), call.getDouble("duration", 0d).longValue() * 1000L, call.getDouble("position", 0d).longValue() * 1000L, call.getBoolean("playing", false));
+        call.resolve();
+    }
+
+    @PluginMethod public void clearMedia(PluginCall call) { NativeMedia.clear(); ConovaPlaybackService.stop(getContext()); call.resolve(); }
 
     @PluginMethod public void login(PluginCall call) {
         getActivity().runOnUiThread(() -> {
@@ -91,5 +109,5 @@ public class ConovaNativePlugin extends Plugin {
         getActivity().runOnUiThread(() -> CookieManager.getInstance().removeAllCookies((removed) -> { CookieManager.getInstance().flush(); call.resolve(); }));
     }
 
-    @Override protected void handleOnDestroy() { executor.shutdownNow(); NativeMedia.clear(); }
+    @Override protected void handleOnDestroy() { if (instance == this) instance = null; executor.shutdownNow(); NativeMedia.clear(); }
 }

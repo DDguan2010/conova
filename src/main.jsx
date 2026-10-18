@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { api, canAccountLogin, accountLogin as loginWithAccount } from './api'
+import { api, canAccountLogin, accountLogin as loginWithAccount, native, updateNativeMedia, listenNativeMedia } from './api'
 import { demoLibrary } from './demo'
 import { usePlayer } from './usePlayer'
 import { MusicCanvas } from './MusicCanvas'
@@ -106,6 +106,24 @@ function App() {
     return () => { for (const action of Object.keys(actions)) { try { navigator.mediaSession.setActionHandler(action, null) } catch { /* Unsupported platform action. */ } } }
   }, [advance])
   useEffect(() => { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = player.playing ? 'playing' : 'paused' }, [player.playing])
+  useEffect(() => {
+    if (!native || !track || (!player.playing && !player.duration)) return
+    updateNativeMedia({ title: track.title, artist: track.artist || '', duration: player.duration || track.duration || 0, position: player.position, playing: player.playing }).catch(() => {})
+  }, [track?.id, track?.title, track?.artist, track?.duration, player.duration, player.playing])
+  useEffect(() => {
+    if (!native) return
+    let listener, disposed = false
+    listenNativeMedia((value) => {
+      const action = value?.action
+      if (action === 'play' && !state.current.player.playing) state.current.player.toggle(state.current.track)
+      else if (action === 'pause' && state.current.player.playing) state.current.player.toggle(state.current.track)
+      else if (action === 'nexttrack') state.current.advance(1, { autoplay: true })
+      else if (action === 'previoustrack') state.current.advance(-1, { autoplay: true })
+      else if (action === 'seekto') state.current.player.seek(Number(value.seekTime))
+      else if (action === 'stop') state.current.player.stop()
+    }).then((handle) => { if (disposed) handle?.remove?.(); else listener = handle })
+    return () => { disposed = true; listener?.remove?.() }
+  }, [native, advance])
 
   const sync = useCallback(async (silent = false) => {
     if (syncLock.current || state.current.demo || !state.current.library.length) return

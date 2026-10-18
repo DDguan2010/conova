@@ -10,7 +10,7 @@ const source = { kind: 'favorite', remoteId: 123, title: 'Music', group: 'owned'
 const track = { bvid: 'BV1234567890', title: 'Song', duration: 180, cover: 'https://i0.hdslb.com/cover.jpg' }
 
 function harness({ saved = null, fetcher, login = async () => ({ cookies: 'SESSDATA=local-only; bili_jct=csrf' }) } = {}) {
-  const requests = [], streams = []
+  const requests = [], streams = [], mediaUpdates = []
   let snapshot = saved, clears = 0
   const service = createLocalService({
     storage: { read: async () => structuredClone(snapshot), write: async (value) => { snapshot = JSON.parse(value) } },
@@ -26,12 +26,12 @@ function harness({ saved = null, fetcher, login = async () => ({ cookies: 'SESSD
       if (url.pathname.endsWith('/playurl')) return json({ dash: { audio: [{ baseUrl: 'https://cdn.bilivideo.com/audio.m4s' }] } })
       throw new Error(`Unexpected request ${url.pathname}`)
     },
-    media: { register: async (value) => { streams.push(value); return { url: '/__conova/audio/ticket' } }, clear: async () => { clears++ } },
+    media: { register: async (value) => { streams.push(value); return { url: '/__conova/audio/ticket' } }, update: async (value) => { mediaUpdates.push(value) }, clear: async () => { clears++ } },
     login,
     clearLogin: async () => { clears++ },
     qrImage: async () => 'data:image/png;base64,qr',
   })
-  return { service, requests, streams, get snapshot() { return snapshot }, get clears() { return clears } }
+  return { service, requests, streams, mediaUpdates, get snapshot() { return snapshot }, get clears() { return clears } }
 }
 
 test('standalone Android starts without any configured server and restores only its local library', async () => {
@@ -87,6 +87,7 @@ test('local albums sync, persist, play through native media and can be removed',
   const audio = await app.service.request('/track/BV1234567890')
   assert.equal(audio.url, '/__conova/audio/ticket')
   assert.deepEqual(app.streams[0], { url: 'https://cdn.bilivideo.com/audio.m4s', backups: [] })
+  assert.deepEqual(app.mediaUpdates[0], { title: 'Song', artist: 'Bilibili', duration: 180, position: 0, playing: false })
   await app.service.request('/library/favorite%3A123', { method: 'DELETE' })
   assert.deepEqual(app.snapshot.library, [])
 })

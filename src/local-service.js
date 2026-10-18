@@ -101,7 +101,9 @@ export function createLocalService({ storage, fetcher, media, login, clearLogin,
       const result = await bili.audio(url.pathname.slice('/track/'.length))
       signal?.throwIfAborted()
       if (epoch !== version) throw new BiliError('登录状态已改变，请重新操作。', 401)
+      const track = session.library.flatMap((source) => source.tracks || []).find((item) => item.bvid === url.pathname.slice('/track/'.length))
       const { url: localUrl } = await media.register({ url: result.url, backups: result.backups })
+      await media.update?.({ title: track?.title || result.title || 'Conova', artist: track?.artist || '', duration: result.duration || track?.duration || 0, position: 0, playing: false })
       return { url: localUrl, duration: result.duration }
     }
     throw new BiliError('接口不存在。', 404)
