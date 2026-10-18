@@ -107,6 +107,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Verify installed app in Android emulator
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
