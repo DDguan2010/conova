@@ -8,9 +8,6 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
-import android.media.AudioAttributes;
-import android.media.AudioFocusRequest;
-import android.media.AudioManager;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
@@ -30,8 +27,6 @@ public final class ConovaPlaybackService extends Service {
 
     private MediaSession session;
     private PowerManager.WakeLock wakeLock;
-    private AudioManager audioManager;
-    private AudioFocusRequest audioFocusRequest;
     private String title = "Conova";
     private String artist = "";
     private long duration;
@@ -69,29 +64,17 @@ public final class ConovaPlaybackService extends Service {
         session = new MediaSession(this, "Conova");
         session.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
         session.setCallback(new MediaSession.Callback() {
-            @Override public void onPlay() { playing = true; updateAudioFocus(); ConovaNativePlugin.dispatchMediaAction("play"); refresh(); }
-            @Override public void onPause() { playing = false; abandonAudioFocus(); ConovaNativePlugin.dispatchMediaAction("pause"); refresh(); }
+            @Override public void onPlay() { playing = true; ConovaNativePlugin.dispatchMediaAction("play"); refresh(); }
+            @Override public void onPause() { playing = false; ConovaNativePlugin.dispatchMediaAction("pause"); refresh(); }
             @Override public void onSkipToNext() { ConovaNativePlugin.dispatchMediaAction("nexttrack"); }
             @Override public void onSkipToPrevious() { ConovaNativePlugin.dispatchMediaAction("previoustrack"); }
-            @Override public void onStop() { playing = false; abandonAudioFocus(); ConovaNativePlugin.dispatchMediaAction("stop"); stopSelf(); }
+            @Override public void onStop() { playing = false; ConovaNativePlugin.dispatchMediaAction("stop"); stopSelf(); }
             @Override public void onSeekTo(long value) { position = Math.max(0, value); ConovaNativePlugin.dispatchMediaSeek(position); refresh(); }
         });
         session.setActive(true);
         PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "conova:playback");
         wakeLock.setReferenceCounted(false);
-        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                    .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                    .setOnAudioFocusChangeListener(change -> {
-                        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
-                            playing = false;
-                            ConovaNativePlugin.dispatchMediaAction("pause");
-                            refresh();
-                        }
-                    }).build();
-        }
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -119,7 +102,6 @@ public final class ConovaPlaybackService extends Service {
                 return START_NOT_STICKY;
             }
         }
-        if (playing) updateAudioFocus(); else abandonAudioFocus();
         refresh();
         return START_STICKY;
     }
@@ -172,19 +154,7 @@ public final class ConovaPlaybackService extends Service {
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
     }
 
-    private void updateAudioFocus() {
-        if (audioManager == null) return;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) audioManager.requestAudioFocus(audioFocusRequest);
-        else audioManager.requestAudioFocus(change -> { }, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
-    }
-    private void abandonAudioFocus() {
-        if (audioManager == null) return;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) audioManager.abandonAudioFocusRequest(audioFocusRequest);
-        else audioManager.abandonAudioFocus(null);
-    }
-
     @Override public void onDestroy() {
-        abandonAudioFocus();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         if (session != null) { session.setActive(false); session.release(); }
         super.onDestroy();

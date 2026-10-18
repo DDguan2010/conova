@@ -77,7 +77,6 @@ public class ConovaNativePlugin extends Plugin {
             List<String> backups = new ArrayList<>();
             for (int index = 0; index < values.length(); index++) if (values.opt(index) instanceof String) backups.add(values.getString(index));
             String path = NativeMedia.register(call.getString("url"), call.getString("cookie", ""), backups);
-            ConovaPlaybackService.update(getContext(), call.getString("title", "Conova"), call.getString("artist", ""), call.getDouble("duration", 0d).longValue() * 1000L, 0, false);
             call.resolve(new JSObject().put("url", path));
         }
         catch (Exception error) { call.reject("音频地址无效。"); }
